@@ -1,6 +1,6 @@
 export const BUILDER_NAME = "Vinayak Ram";
 
-export const ATTRIBUTION = `Built by ${BUILDER_NAME} for the goSTOPS Build Sprint. Not an official goSTOPS product.`;
+export const ATTRIBUTION = `Built by ${BUILDER_NAME} for the goSTOPS Build Sprint.`;
 
 export const CATEGORIES = [
   { id: "room_move", label: "Room move", emoji: "🛏️" },

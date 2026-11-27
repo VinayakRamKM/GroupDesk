@@ -53,8 +53,11 @@ function categoryMeta(id: string) {
 
 function DeskInner({ slug }: { slug: string }) {
   const search = useSearchParams();
+  const role = search.get("role");
+  const isEmployee = role === "employee" || role === "customer";
   const [data, setData] = useState<DeskPayload | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [paste, setPaste] = useState("");
@@ -113,7 +116,9 @@ function DeskInner({ slug }: { slug: string }) {
   }, [data]);
 
   const memberUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/d/${slug}` : `/d/${slug}`;
+    typeof window !== "undefined"
+      ? `${window.location.origin}/d/${slug}?role=employee`
+      : `/d/${slug}?role=employee`;
 
   async function copyLink() {
     try {
@@ -155,6 +160,7 @@ function DeskInner({ slug }: { slug: string }) {
     if (!extracted) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const res = await fetch(`/api/desks/${slug}/requests`, {
         method: "POST",
@@ -164,6 +170,17 @@ function DeskInner({ slug }: { slug: string }) {
       if (!res.ok) {
         setError(await responseError(res, "Could not create tasks."));
         return;
+      }
+      const result = (await res.json()) as {
+        created?: unknown[];
+        duplicatesSkipped?: number;
+      };
+      if (result.duplicatesSkipped) {
+        setNotice(
+          result.created?.length
+            ? `Added ${result.created.length} new requests; skipped ${result.duplicatesSkipped} duplicates.`
+            : "This chat was already imported; duplicate requests were skipped.",
+        );
       }
       setExtracted(null);
       setPaste("");
@@ -253,7 +270,9 @@ function DeskInner({ slug }: { slug: string }) {
           </Link>
           <h1 className="serif mt-1 text-3xl sm:text-4xl">{data.desk.name}</h1>
           <p className="mt-1 text-sm text-muted">
-            {data.desk.managerName} · {counts.open} open · {counts.doing} doing ·{" "}
+            {isEmployee ? "Employee view · " : ""}
+            {data.desk.managerName} · {counts.open} open · {counts.doing} doing
+            {" · "}
             {counts.closed} closed
           </p>
           {error ? (
@@ -261,25 +280,34 @@ function DeskInner({ slug }: { slug: string }) {
               {error}
             </p>
           ) : null}
+          {notice ? (
+            <p role="status" className="mt-2 text-sm text-teal">
+              {notice}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={copyLink}
-            className="rounded-full border border-ink px-4 py-2 text-sm font-semibold"
-          >
-            {copied || "Copy WhatsApp invite"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPasteOpen(true);
-              setExtracted(null);
-            }}
-            className="rounded-full bg-terracotta px-4 py-2 text-sm font-semibold text-white"
-          >
-            Paste chat
-          </button>
+          {!isEmployee ? (
+            <>
+              <button
+                type="button"
+                onClick={copyLink}
+                className="rounded-full border border-ink px-4 py-2 text-sm font-semibold"
+              >
+                {copied || "Copy WhatsApp invite"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPasteOpen(true);
+                  setExtracted(null);
+                }}
+                className="rounded-full bg-terracotta px-4 py-2 text-sm font-semibold text-white"
+              >
+                Paste chat
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => setAddOpen(true)}
@@ -323,62 +351,75 @@ function DeskInner({ slug }: { slug: string }) {
                       {item.closeNote ? (
                         <p className="mt-2 text-xs text-teal">{item.closeNote}</p>
                       ) : null}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {item.status !== "doing" && item.status !== "closed" ? (
-                          <button
-                            type="button"
-                            className="rounded-full border border-doing px-3 py-1 text-xs font-semibold text-doing"
-                            onClick={() => patch(item.id, { status: "doing" })}
-                          >
-                            Doing
-                          </button>
-                        ) : null}
-                        {item.status !== "closed" ? (
-                          <button
-                            type="button"
-                            className="rounded-full bg-teal px-3 py-1 text-xs font-semibold text-white"
-                            onClick={() => patch(item.id, { status: "closed" })}
-                          >
-                            Close
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="rounded-full border border-line px-3 py-1 text-xs"
-                            onClick={() => whatsappDone(item)}
-                          >
-                            Ping WhatsApp
-                          </button>
-                        )}
-                      </div>
-                      {item.status !== "closed" ? (
-                        <form
-                          className="mt-2 flex gap-2"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            const name = assigneeDraft[item.id]?.trim();
-                            if (!name) return;
-                            void patch(item.id, { assigneeName: name });
-                          }}
-                        >
-                          <input
-                            value={assigneeDraft[item.id] ?? item.assigneeName ?? ""}
-                            onChange={(e) =>
-                              setAssigneeDraft((prev) => ({
-                                ...prev,
-                                [item.id]: e.target.value,
-                              }))
-                            }
-                            placeholder="Assign (name)"
-                            className="w-full rounded-lg border border-line px-2 py-1 text-xs"
-                          />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-line px-2 text-xs"
-                          >
-                            Set
-                          </button>
-                        </form>
+                      {!isEmployee ? (
+                        <>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {item.status !== "doing" &&
+                            item.status !== "closed" ? (
+                              <button
+                                type="button"
+                                className="rounded-full border border-doing px-3 py-1 text-xs font-semibold text-doing"
+                                onClick={() =>
+                                  patch(item.id, { status: "doing" })
+                                }
+                              >
+                                Doing
+                              </button>
+                            ) : null}
+                            {item.status !== "closed" ? (
+                              <button
+                                type="button"
+                                className="rounded-full bg-teal px-3 py-1 text-xs font-semibold text-white"
+                                onClick={() =>
+                                  patch(item.id, { status: "closed" })
+                                }
+                              >
+                                Close
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="rounded-full border border-line px-3 py-1 text-xs"
+                                onClick={() => whatsappDone(item)}
+                              >
+                                Ping WhatsApp
+                              </button>
+                            )}
+                          </div>
+                          {item.status !== "closed" ? (
+                            <form
+                              className="mt-2 flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const name = assigneeDraft[item.id]?.trim();
+                                if (!name) return;
+                                void patch(item.id, { assigneeName: name });
+                              }}
+                            >
+                              <input
+                                value={
+                                  assigneeDraft[item.id] ??
+                                  item.assigneeName ??
+                                  ""
+                                }
+                                onChange={(e) =>
+                                  setAssigneeDraft((prev) => ({
+                                    ...prev,
+                                    [item.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Assign (name)"
+                                className="w-full rounded-lg border border-line px-2 py-1 text-xs"
+                              />
+                              <button
+                                type="submit"
+                                className="rounded-lg border border-line px-2 text-xs"
+                              >
+                                Set
+                              </button>
+                            </form>
+                          ) : null}
+                        </>
                       ) : null}
                     </article>
                   );
@@ -501,7 +542,7 @@ function DeskInner({ slug }: { slug: string }) {
               onChange={(e) =>
                 setForm({ ...form, requesterName: e.target.value })
               }
-              placeholder="Who asked?"
+              placeholder={isEmployee ? "Your name" : "Who asked?"}
               className="mt-3 w-full rounded-xl border border-line bg-card px-3 py-3"
             />
             <select

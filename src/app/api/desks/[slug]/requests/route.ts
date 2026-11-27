@@ -27,7 +27,10 @@ export async function POST(
       kept,
       body.source || "whatsapp",
     );
-    return NextResponse.json({ created });
+    return NextResponse.json({
+      created,
+      duplicatesSkipped: kept.length - created.length,
+    });
   }
 
   const title = (body.title || "").trim();

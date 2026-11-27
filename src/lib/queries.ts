@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "./db";
 import { desks, requests, type RequestRow } from "./schema";
@@ -33,11 +33,27 @@ export async function getDeskBySlug(slug: string) {
 
 export async function listRequests(deskId: string) {
   const db = getDb();
-  return db
+  const rows = await db
     .select()
     .from(requests)
     .where(eq(requests.deskId, deskId))
     .orderBy(desc(requests.createdAt));
+
+  const unique = new Map<string, RequestRow>();
+  for (const row of rows) {
+    const key =
+      row.source === "whatsapp" && row.sourceMessage
+        ? `source:${row.sourceMessage}`
+        : `request:${row.id}`;
+    const existing = unique.get(key);
+    if (!existing || row.createdAt.getTime() < existing.createdAt.getTime()) {
+      unique.set(key, row);
+    }
+  }
+
+  return [...unique.values()].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
 }
 
 export async function insertRequests(
@@ -47,10 +63,88 @@ export async function insertRequests(
 ) {
   if (items.length === 0) return [];
   const db = getDb();
+
+  let itemsToInsert = items;
+  if (source === "whatsapp") {
+    const [desk] = await db
+      .select({ slug: desks.slug })
+      .from(desks)
+      .where(eq(desks.id, deskId));
+    const isDemoDesk = desk?.slug === "hostel-demo";
+    const sourceMessages = [
+      ...new Set(
+        items
+          .map((item) => item.sourceMessage)
+          .filter((message) => message.trim().length > 0),
+      ),
+    ];
+    const existingRows =
+      isDemoDesk
+        ? await db
+            .select({
+              sourceMessage: requests.sourceMessage,
+              body: requests.body,
+              requesterName: requests.requesterName,
+            })
+            .from(requests)
+            .where(
+              and(
+                eq(requests.deskId, deskId),
+                eq(requests.source, "whatsapp"),
+              ),
+            )
+        : sourceMessages.length > 0
+        ? await db
+            .select({
+              sourceMessage: requests.sourceMessage,
+              body: requests.body,
+              requesterName: requests.requesterName,
+            })
+            .from(requests)
+            .where(
+              and(
+                eq(requests.deskId, deskId),
+                eq(requests.source, "whatsapp"),
+                inArray(requests.sourceMessage, sourceMessages),
+              ),
+            )
+        : [];
+    const existingMessages = new Set(
+      existingRows
+        .map((row) => row.sourceMessage)
+        .filter((message): message is string => message !== null),
+    );
+    const seenMessages = new Set<string>();
+    const existingDemoContent = new Set(
+      existingRows.map((row) => `${row.requesterName}\u0000${row.body}`),
+    );
+    const seenDemoContent = new Set<string>();
+    itemsToInsert = items.filter((item) => {
+      const message = item.sourceMessage;
+      if (
+        message.trim() &&
+        (existingMessages.has(message) || seenMessages.has(message))
+      ) {
+        return false;
+      }
+      if (isDemoDesk) {
+        const content = `${item.requesterName}\u0000${item.body}`;
+        if (existingDemoContent.has(content) || seenDemoContent.has(content)) {
+          return false;
+        }
+        seenDemoContent.add(content);
+      }
+      if (message.trim()) seenMessages.add(message);
+      return true;
+    });
+  }
+
+  if (itemsToInsert.length === 0) return [];
+
   return db
     .insert(requests)
     .values(
-      items.map((item) => ({
+      itemsToInsert.map((item) => ({
         deskId,
         title: item.title,
         body: item.body,

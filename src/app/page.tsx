@@ -28,7 +28,7 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 py-10 sm:py-16">
-      <p className="text-sm tracking-wide text-terracotta">GROUPDESK</p>
+      <p className="text-3xl tracking-wide text-terracotta">GROUPDESK</p>
       <h1 className="serif mt-3 max-w-3xl text-4xl leading-tight sm:text-6xl">
         The WhatsApp group is not a task list.
         <span className="text-terracotta"> Close the loop.</span>
@@ -41,10 +41,10 @@ export default function Home() {
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
-          href="/new"
+          href="/login"
           className="rounded-full bg-terracotta px-5 py-3 text-sm font-semibold text-white hover:bg-terracotta-dark"
         >
-          Create a desk
+          Choose your role
         </Link>
         <button
           type="button"
